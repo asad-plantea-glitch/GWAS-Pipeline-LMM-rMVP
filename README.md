@@ -43,15 +43,8 @@ readxl
 Phenotypic Data
 The phenotype file should contain genotype identifiers, replications, and trait values.
 
-Example format:
-Genotype   Replication   Trait1   Trait2
-G1         1             12.5     6.3
-G1         2             13.2     6.1
-G2         1             10.1     5.8
-G2         2             10.7     5.6
 Genotype Data
 Genotypic data should be provided in HapMap format.
-
 Example:
 mdp_genotype.hmp.txt
 
