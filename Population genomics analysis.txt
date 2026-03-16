@@ -1,0 +1,162 @@
+################################################################################################
+### Structure Analysis
+################################################################################################
+
+### Step 0: Set Working Directory
+setwd("C:/")
+
+################################################################################################
+### Step 1: Install and Load Required Packages
+################################################################################################
+if (!require("rMVP")) install.packages("rMVP")
+if (!require("ape")) install.packages("ape")
+if (!require("RColorBrewer")) install.packages("RColorBrewer")
+if (!require("scatterplot3d")) install.packages("scatterplot3d")
+if (!require("bigmemory")) install.packages("bigmemory")
+
+library(rMVP)
+library(ape)
+library(RColorBrewer)
+library(scatterplot3d)
+library(bigmemory)
+
+################################################################################################
+### Step 2: Data Preparation (HapMap format)
+################################################################################################
+
+MVP.Data(
+  fileHMP = "mdp_genotype.hmp.txt",   # Input genotype file in HapMap format
+  filePhe = "mdp_phenotype.txt",      # Input phenotype file
+  fileKin = TRUE,                     # Compute Kinship matrix
+  filePC  = TRUE,                     # Perform PCA
+  out     = "mvp.hmp"                 # Output file prefix
+)
+
+################################################################################################
+### Step 3: Load PCA Results (4 Principal Components)
+################################################################################################
+
+if (!file.exists("mvp.hmp.pc.desc")) stop("❌ PCA descriptor file not found.")
+pca_big <- attach.big.matrix("mvp.hmp.pc.desc")
+pca <- bigmemory::as.matrix(pca_big)[, 1:4]
+pca_scores <- as.data.frame(pca)
+colnames(pca_scores) <- c("PC1", "PC2", "PC3", "PC4")
+
+################################################################################################
+### Step 4: Identify Subgroups using K-Means Clustering
+################################################################################################
+
+set.seed(42)
+k_clusters <- 3  # You can set 2, 3, or more based on structure
+pca_scores$Group <- as.factor(kmeans(pca_scores[, 1:4], centers = k_clusters)$cluster)
+
+# Assign distinct colors for subgroups
+palette_colors <- brewer.pal(k_clusters, "Dark2")
+
+################################################################################################
+### Step 5: PCA Visualization
+################################################################################################
+
+jpeg("PCA_3D_Plot.jpg", width = 1200, height = 1000, res = 300)
+scatterplot3d(
+  x = pca_scores$PC1,
+  y = pca_scores$PC2,
+  z = pca_scores$PC3,
+  color = palette_colors[as.numeric(pca_scores$Group)],
+  pch = 19,
+  cex.symbols = 1.1,
+  main = "3D PCA Plot (Population Structure)",
+  xlab = "PC1",
+  ylab = "PC2",
+  zlab = "PC3"
+)
+legend("topright",
+       legend = paste("Group", 1:k_clusters),
+       col = palette_colors,
+       pch = 16,
+       bty = "n", cex = 1)
+dev.off()
+
+################################################################################################
+### Step 6: Load Kinship Matrix and Build NJ Tree
+################################################################################################
+
+if (!file.exists("mvp.hmp.kin.desc")) stop("❌ Kinship descriptor file not found.")
+kinship_big <- attach.big.matrix("mvp.hmp.kin.desc")
+kinship_matrix <- bigmemory::as.matrix(kinship_big)
+
+# Ensure valid matrix
+diag(kinship_matrix) <- 1
+kinship_matrix <- (kinship_matrix + t(kinship_matrix)) / 2
+
+# Convert to distance matrix
+dist_matrix <- as.dist(1 - kinship_matrix)
+
+# Build Neighbor-Joining tree
+tree <- nj(dist_matrix)
+
+################################################################################################
+### Step 7: Neighbor-Joining Tree
+################################################################################################
+
+# Assign color to each genotype (tip)
+tip_colors <- palette_colors[as.numeric(pca_scores$Group)]
+
+# Initialize all branches as gray
+edge_colors <- rep("gray60", nrow(tree$edge))
+
+# Identify edges that end at tips and assign group color
+n_tips <- length(tree$tip.label)
+for (i in seq_len(nrow(tree$edge))) {
+  end_node <- tree$edge[i, 2]
+  if (end_node <= n_tips) {
+    edge_colors[i] <- tip_colors[end_node]
+  }
+}
+
+# Create high-resolution circular plot
+jpeg("Neighbor_Joining_Tree_Circular_Colored.jpg", width = 1600, height = 1600, res = 300)
+
+# Leave space for legend
+par(mar = c(1, 1, 1, 8))
+
+# Plot the tree
+plot.phylo(
+  tree,
+  type = "fan",              # Circular layout
+  tip.color = tip_colors,    # Tip colors by group
+  edge.color = edge_colors,  # Colored tip branches
+  show.tip.label = FALSE,    # No genotype names
+  use.edge.length = TRUE,
+  edge.width = 1.5,
+  main = "Circular Neighbor-Joining Tree (Population Structure)"
+)
+
+# Add separated legend on the right
+legend(
+  x = 1.5, y = 0.8,          # Adjust if needed
+  legend = paste("Group", 1:k_clusters),
+  col = palette_colors,
+  pch = 16,
+  cex = 1.2,
+  bty = "n",
+  xpd = TRUE                 # Allow outside plot region
+)
+
+dev.off()
+
+################################################################################################
+### Step 8: Export Cluster Assignments
+################################################################################################
+
+write.table(
+  pca_scores,
+  "Population_Structure_Groups.txt",
+  sep = "\t", row.names = FALSE, quote = FALSE
+)
+
+cat("✅ Structure analysis completed successfully!\n")
+cat("   Files generated:\n")
+cat("   • PCA_3D_Plot.jpg\n")
+cat("   • Neighbor_Joining_Tree_Circular_Colored.jpg\n")
+cat("   • Population_Structure_Groups.txt\n")

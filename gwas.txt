@@ -1,0 +1,58 @@
+################################################################################################
+### Genome-Wide Association Study (GWAS) using rMVP
+################################################################################################
+
+### Step 0: Set Working Directory
+setwd("C:/")
+
+### Step 1: Install and Load Required Package
+# Run only once
+install.packages("rMVP")
+library(rMVP)
+
+################################################################################################
+### Step 2: Data Preparation (HapMap format)
+################################################################################################
+
+MVP.Data(
+  fileHMP = "mdp_genotype.hmp.txt",   # Input genotype file in HapMap format
+  filePhe = "mdp_phenotype.txt",      # Input phenotype file
+  fileKin = TRUE,                     # Compute Kinship matrix
+  filePC  = TRUE,                     # Perform PCA
+  out     = "mvp.hmp"                 # Output file prefix
+)
+
+
+################################################################################################
+### Step 3: Load Input Files for GWAS
+################################################################################################
+
+# Load data
+genotype  <- attach.big.matrix("mvp.hmp.geno.desc")
+phenotype <- read.table("mvp.hmp.phe", header = TRUE)
+map       <- read.table("mvp.hmp.geno.map", header = TRUE)
+
+# Optional: Load Kinship matrix
+Kinship <- attach.big.matrix("mvp.hmp.kin.desc")
+
+
+
+################################################################################################
+### Step 4: Run GWAS for Multiple Traits WITH Kinship Matrix
+################################################################################################
+
+for (i in 2:ncol(phenotype)) {
+  imMVP <- MVP(
+    phe         = phenotype[, c(1, i)],
+    geno        = genotype,
+    map         = map,
+    nPC.GLM     = 2,
+    nPC.MLM     = 2,
+    nPC.FarmCPU = 2,
+    threshold   = 02.7,
+    method      = c("GLM", "MLM", "FarmCPU"),
+    file.output = TRUE
+  )
+  gc()
+}
+

@@ -1,0 +1,111 @@
+################################################################################
+# Load libraries
+################################################################################
+library(readxl)
+library(lme4)
+library(lmerTest)
+library(dplyr)
+library(tidyr)
+library(purrr)
+
+################################################################################
+# Import data
+################################################################################
+data <- read_excel("C:/Users/YourPath/phenotype.xlsx")
+
+# Convert to factor
+data$Genotype <- as.factor(data$Genotype)
+data$Replication <- as.factor(data$Replication)
+
+# Check structure
+str(data)
+
+################################################################################
+# Identify trait columns
+################################################################################
+trait_names <- colnames(data)[3:ncol(data)]
+
+trait_names
+
+################################################################################
+# Function to calculate BLUEs and Heritability
+################################################################################
+
+analyze_trait <- function(trait){
+
+  # Create formula
+  formula <- as.formula(paste(trait, "~ Genotype + (1|Replication)"))
+
+  # Fit model for BLUEs
+  model_blue <- lmer(formula, data = data)
+
+  # Extract BLUEs
+  blues <- coef(model_blue)$Genotype
+  blues <- data.frame(Genotype = rownames(blues),
+                      BLUE = blues[,1])
+
+  # Model for variance components (Genotype random)
+  formula_var <- as.formula(paste(trait, "~ (1|Genotype) + (1|Replication)"))
+
+  model_var <- lmer(formula_var, data = data)
+
+  vc <- as.data.frame(VarCorr(model_var))
+
+  # Extract variance components
+  vg <- vc$vcov[vc$grp=="Genotype"]
+  ve <- attr(VarCorr(model_var), "sc")^2
+
+  r <- length(unique(data$Replication))
+
+  # Broad sense heritability
+  H2 <- vg / (vg + (ve/r))
+
+  result <- list(
+    trait = trait,
+    blues = blues,
+    H2 = H2
+  )
+
+  return(result)
+}
+
+################################################################################
+# Run analysis for all traits
+################################################################################
+
+results <- map(trait_names, analyze_trait)
+
+################################################################################
+# Combine BLUEs
+################################################################################
+
+blues_all <- map2_df(results, trait_names, function(res, trait){
+
+  df <- res$blues
+  colnames(df)[2] <- trait
+  return(df)
+
+}) %>%
+  group_by(Genotype) %>%
+  summarise(across(everything(), mean))
+
+blues_all
+
+################################################################################
+# Heritability table
+################################################################################
+
+heritability <- data.frame(
+  Trait = trait_names,
+  H2 = map_dbl(results, "H2")
+)
+
+heritability
+
+################################################################################
+# Save results
+################################################################################
+
+write.csv(blues_all, "Genotype_BLUEs.csv", row.names = FALSE)
+
+write.csv(heritability, "Trait_Heritability.csv", row.names = FALSE)
